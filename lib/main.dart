@@ -26,6 +26,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
+/// The main page with a top/bottom split.
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key? key}) : super(key: key);
 
@@ -34,14 +35,15 @@ class MyHomePage extends StatefulWidget {
 }
 
 /// This example:
-///  - Reads CSV with columns: [Item, Description, UM, Material, Labor, Equipment, Total]
-///  - Lets you filter in the top table (preserving header row).
-///  - If UM == 'PCT', treat CSV "Total" as a % fraction (e.g., 5 => 0.05).
-///  - If UM != 'PCT' but CSV "Total" is zero or missing, fallback to sum(Material+Labor+Equipment).
-///  - Always keep the first row (headers) so top table columns remain visible.
+/// - Reads CSV with columns: [Item, Description, UM, Material, Labor, Equipment, Total].
+/// - If UM == 'PCT', parse 'Total' as a fraction (e.g. '5' => 0.05).
+/// - If UM != 'PCT' and there's no material/labor/equipment, we do lineTotal = csvTotal * quantity.
+/// - Otherwise lineTotal = (mat+lab+eqp) * quantity.
+/// - Preserves the header row so top table columns remain.
+/// - Expands top SplitView to 60% by default so there's less overflow.
 class _MyHomePageState extends State<MyHomePage> {
-  late List<List<dynamic>> _lines;         // Entire CSV (including header row at index 0)
-  late List<List<dynamic>> _filteredLines; // Filtered CSV lines (we keep row 0 always)
+  late List<List<dynamic>> _lines;         // Entire CSV (row 0 is headers)
+  late List<List<dynamic>> _filteredLines; // Filtered CSV, preserving row 0
   late List<String> _headers;              // The header row as strings
 
   // Indices for each required column
@@ -53,11 +55,9 @@ class _MyHomePageState extends State<MyHomePage> {
   int _idxEquipment = -1;
   int _idxTotal = -1;
 
-  // For the top PaginatedDataTable
-  late CSVDataSource _csvDataSource;
+  late CSVDataSource _csvDataSource;       // For top PaginatedDataTable
 
-  // Bottom "collection"
-  final List<AddedItem> _bottomItems = [];
+  final List<AddedItem> _bottomItems = []; // The "collection" at bottom
 
   bool _isLoading = true;
   String _errorMessage = '';
@@ -93,9 +93,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
       // The header row
       final rawHeaders = _lines.first;
-      _headers = rawHeaders.map((cell) => cell.toString().trim()).toList(growable: false);
+      _headers =
+          rawHeaders.map((cell) => cell.toString().trim()).toList(growable: false);
 
-      // Find each column index by name
+      // Find indices for required columns
       _idxItem = _headers.indexOf('Item');
       _idxDescription = _headers.indexOf('Description');
       _idxUM = _headers.indexOf('UM');
@@ -104,16 +105,14 @@ class _MyHomePageState extends State<MyHomePage> {
       _idxEquipment = _headers.indexOf('Equipment');
       _idxTotal = _headers.indexOf('Total');
 
-      // Confirm we found them
       if ([_idxItem, _idxDescription, _idxUM, _idxMaterial, _idxLabor, _idxEquipment, _idxTotal]
           .contains(-1)) {
-        throw 'Missing one of [Item,Description,UM,Material,Labor,Equipment,Total] headers in CSV.';
+        throw 'Missing one of [Item,Description,UM,Material,Labor,Equipment,Total] in CSV headers.';
       }
 
-      // Initially, no search => full data
+      // No search => entire CSV
       _filteredLines = List.from(_lines);
 
-      // Build top table data source
       _csvDataSource = CSVDataSource(
         lines: _filteredLines,
         onAddSingle: _addSingleRowToBottom,
@@ -132,36 +131,29 @@ class _MyHomePageState extends State<MyHomePage> {
     return const CsvToListConverter().convert(csvString);
   }
 
-  /// When the user types in the search box
   void _onSearchChanged() {
     _filterData(_searchController.text);
   }
 
-  /// **Keep the first row as headers** no matter what
-  /// Then filter the subsequent rows (skip(1)) for matching text
+  /// Keep row 0 (headers) always. Filter the rest if query
   void _filterData(String query) {
     setState(() {
-      final headerRow = _lines.first;      // preserve
-      final dataRows = _lines.skip(1);     // actual data
+      final headerRow = _lines.first;
+      final dataRows = _lines.skip(1);
       if (query.trim().isEmpty) {
-        // No filter => everything
         _filteredLines = List.from(_lines);
       } else {
         final lower = query.toLowerCase();
-        // Filter only among data rows
         final filteredData = dataRows.where((row) {
-          return row.any((cell) =>
-              cell.toString().toLowerCase().contains(lower));
+          return row.any((cell) => cell.toString().toLowerCase().contains(lower));
         }).toList();
-        // Rebuild with the header + filtered data
         _filteredLines = [headerRow, ...filteredData];
       }
-      // Update the top table
       _csvDataSource.updateData(_filteredLines);
     });
   }
 
-  /// Called by "Add Selected" button
+  /// "Add Selected" button
   void _addSelectedRows() {
     final selectedRows = _csvDataSource.getSelectedRows();
     for (final row in selectedRows) {
@@ -170,9 +162,10 @@ class _MyHomePageState extends State<MyHomePage> {
     _csvDataSource.clearSelection();
   }
 
-  /// Add a single row from the top to the bottom
-  /// - If UM == 'PCT', parse "Total" as a fraction (e.g. 5 => 0.05).
-  /// - Else, parse "Total" normally. If it's 0, fallback to sum(Material+Labor+Equipment).
+  /// Add a single row from top table to bottom
+  /// - If UM == 'PCT', parse "Total" as fraction.
+  /// - If UM != 'PCT', if material+labor+equip > 0 => lineTotal = sum * qty.
+  ///   Otherwise => lineTotal = csvTotal * qty.
   void _addSingleRowToBottom(List<dynamic> row) {
     if (row.length < _headers.length) return;
 
@@ -183,18 +176,13 @@ class _MyHomePageState extends State<MyHomePage> {
     double totalVal;
 
     if (umStr.toUpperCase() == 'PCT') {
-      // CSV "Total" is stored as a % (like "5" => 5 => 0.05)
       totalVal = _parsePercentage(row[_idxTotal]);
     } else {
-      // For non-PCT, parse CSV "Total" as normal
       totalVal = _toDouble(row[_idxTotal]);
-      // If the CSV "Total" was 0 or missing, fallback to mat+lab+eqp
-      if (totalVal == 0) {
-        totalVal = mat + lab + eqp;
-      }
+      // If total is 0, we still store it in csvTotal. We'll do the logic in get lineTotal.
     }
 
-    final item = AddedItem(
+    final newItem = AddedItem(
       item: row[_idxItem]?.toString() ?? '',
       description: row[_idxDescription]?.toString() ?? '',
       um: umStr,
@@ -205,25 +193,33 @@ class _MyHomePageState extends State<MyHomePage> {
     );
 
     setState(() {
-      _bottomItems.add(item);
+      _bottomItems.add(newItem);
     });
   }
 
-  /// If CSV cell is "5" => 0.05, "0.05" => 0.05, "5%" => remove '%' => "5" => 0.05
+  /// Remove '$' / ',' / '%' before parsing as fraction
   double _parsePercentage(dynamic cell) {
     if (cell == null) return 0.0;
-    var str = cell.toString().replaceAll('%', '').trim();
-    final rawVal = double.tryParse(str) ?? 0.0;
+    var s = cell.toString().toLowerCase().trim();
+    s = s.replaceAll('\$', '');
+    s = s.replaceAll('%', '');
+    s = s.replaceAll(',', '');
+    final rawVal = double.tryParse(s) ?? 0.0;
     if (rawVal > 1.0) {
       return rawVal / 100.0;
     }
     return rawVal;
   }
 
+  /// Remove '$' / ',' from normal cost cells
   double _toDouble(dynamic val) {
     if (val == null) return 0.0;
-    if (val is num) return val.toDouble();
-    return double.tryParse(val.toString()) ?? 0.0;
+    var s = val.toString().toLowerCase().trim();
+    s = s.replaceAll('\$', '');
+    s = s.replaceAll(',', '');
+    // if empty => 0.0
+    if (s.isEmpty) return 0.0;
+    return double.tryParse(s) ?? 0.0;
   }
 
   @override
@@ -266,7 +262,8 @@ class _MyHomePageState extends State<MyHomePage> {
           Expanded(
             child: SplitView(
               viewMode: SplitViewMode.Vertical,
-              controller: SplitViewController(weights: [0.5, 0.5]),
+              // Make top ~60%, bottom ~40%
+              controller: SplitViewController(weights: [0.6, 0.4]),
               gripSize: 8,
               gripColor: Colors.grey.shade200,
               gripColorActive: Colors.grey.shade400,
@@ -350,7 +347,7 @@ class _MyHomePageState extends State<MyHomePage> {
           color: Colors.grey.shade200,
           padding: const EdgeInsets.all(8),
           child: const Text(
-            'My Collection (editable quantity / \$ for PCT)',
+            'My Collection (quantity or \$ if PCT)',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
@@ -368,18 +365,18 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Widget _buildBottomDataTable() {
     // Columns:
-    //  1) Item
-    //  2) Description
-    //  3) UM
-    //  4) Material
-    //  5) Labor
-    //  6) Equipment
-    //  7) CSV "Total" or fraction (for PCT)
-    //  8) Qty/PCT
-    //  9) Total Material
-    //  10) Total Labor
-    //  11) Total Equipment
-    //  12) Line Total
+    // 1) Item
+    // 2) Description
+    // 3) UM
+    // 4) Material
+    // 5) Labor
+    // 6) Equipment
+    // 7) CSV "Total"
+    // 8) Qty/PCT
+    // 9) Total Material
+    // 10) Total Labor
+    // 11) Total Equipment
+    // 12) Line Total
     final columns = <DataColumn>[
       const DataColumn(label: Text('Item')),
       const DataColumn(label: Text('Description')),
@@ -388,7 +385,7 @@ class _MyHomePageState extends State<MyHomePage> {
       const DataColumn(label: Text('Labor')),
       const DataColumn(label: Text('Equipment')),
       const DataColumn(label: Text('Total')),
-      const DataColumn(label: Text('Qty/USD%Applied To')),
+      const DataColumn(label: Text('Qty/PCT')),
       const DataColumn(label: Text('Total Material')),
       const DataColumn(label: Text('Total Labor')),
       const DataColumn(label: Text('Total Equipment')),
@@ -405,9 +402,7 @@ class _MyHomePageState extends State<MyHomePage> {
           DataCell(Text(item.labor.toStringAsFixed(2))),
           DataCell(Text(item.equipment.toStringAsFixed(2))),
 
-          // For PCT items, this "Total" is the parsed fraction 
-          // (e.g. 0.05 for 5%). For non-PCT, it might be the CSV total 
-          // or fallback to (material+labor+equipment).
+          // If "PCT", this might be fraction. If normal, it's the actual total or fallback.
           DataCell(Text(item.csvTotal.toStringAsFixed(2))),
 
           // Editable quantity/dollar
@@ -466,7 +461,7 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
 
-    // Table =  [Type, Material, Labor, Equipment, Line Total]
+    // Table: [Type, Material, Labor, Equipment, Line Total]
     final columns = <DataColumn>[
       const DataColumn(
           label: Text('Type', style: TextStyle(fontWeight: FontWeight.bold))),
@@ -475,11 +470,9 @@ class _MyHomePageState extends State<MyHomePage> {
       const DataColumn(
           label: Text('Labor', style: TextStyle(fontWeight: FontWeight.bold))),
       const DataColumn(
-          label:
-              Text('Equipment', style: TextStyle(fontWeight: FontWeight.bold))),
+          label: Text('Equipment', style: TextStyle(fontWeight: FontWeight.bold))),
       const DataColumn(
-          label:
-              Text('Line Total', style: TextStyle(fontWeight: FontWeight.bold))),
+          label: Text('Line Total', style: TextStyle(fontWeight: FontWeight.bold))),
     ];
 
     final rows = aggMap.entries.map((e) {
@@ -501,21 +494,19 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 }
 
-/// The "added" item in the bottom table
+/// Represents one "added" item in the bottom table
 class AddedItem {
   final String item;
   final String description;
-  final String um;       // if "PCT", we handle differently
+  final String um;    // 'PCT' => parse differently
   final double material;
   final double labor;
   final double equipment;
-
-  /// For PCT items, this is the fraction (0.05 for 5%). 
-  /// For others, it's either the CSV "Total" or a fallback to (mat+lab+eqp).
+  // For normal items => the CSV "Total" or leftover
+  // For PCT => fraction (e.g. 5 => 0.05)
   final double csvTotal;
 
-  // The user’s editable quantity or dollar input
-  double quantity = 1.0;
+  double quantity = 1.0; // user-editable
 
   AddedItem({
     required this.item,
@@ -527,28 +518,37 @@ class AddedItem {
     required this.csvTotal,
   });
 
-  // For non-PCT, totalMaterial = material * quantity
-  // For PCT, zero => we only multiply csvTotal
-  double get totalMaterial =>
-      (um.toUpperCase() == 'PCT') ? 0.0 : material * quantity;
-  double get totalLabor =>
-      (um.toUpperCase() == 'PCT') ? 0.0 : labor * quantity;
-  double get totalEquipment =>
-      (um.toUpperCase() == 'PCT') ? 0.0 : equipment * quantity;
+  double get sumMLE => material + labor + equipment;
 
-  /// Final line total:
-  ///  - If PCT => lineTotal = quantity * csvTotal
-  ///  - Else => sum of mat/lab/eqp * quantity
+  /// If UM == 'PCT', lineTotal = quantity * csvTotal (treat csvTotal as fraction).
+  /// Else if sumMLE > 0 => lineTotal = sumMLE * quantity.
+  /// Else => lineTotal = csvTotal * quantity.
   double get lineTotal {
     if (um.toUpperCase() == 'PCT') {
       return quantity * csvTotal;
     } else {
-      return totalMaterial + totalLabor + totalEquipment;
+      if (sumMLE > 0) {
+        return sumMLE * quantity;
+      } else {
+        return csvTotal * quantity;
+      }
     }
   }
+
+  // For aggregator, we only count the "Material, Labor, Equipment" if sumMLE > 0
+  // Otherwise, it's a "total-only" item with no M, L, E breakdown
+  double get totalMaterial => (um.toUpperCase() == 'PCT' || sumMLE == 0)
+      ? 0.0
+      : material * quantity;
+  double get totalLabor => (um.toUpperCase() == 'PCT' || sumMLE == 0)
+      ? 0.0
+      : labor * quantity;
+  double get totalEquipment => (um.toUpperCase() == 'PCT' || sumMLE == 0)
+      ? 0.0
+      : equipment * quantity;
 }
 
-/// Aggregation by type code
+/// Aggregation for summary
 class _Agg {
   double material = 0.0;
   double labor = 0.0;
@@ -576,11 +576,10 @@ class CSVDataSource extends DataTableSource {
     notifyListeners();
   }
 
-  /// Actual data rows are everything after the first row
+  /// The data rows are everything after row 0 (headers)
   List<List<dynamic>> get _dataRows =>
       (_lines.length > 1) ? _lines.sublist(1) : [];
 
-  /// Return the row data for selected checkboxes
   List<List<dynamic>> getSelectedRows() {
     final all = _dataRows;
     return _selected.map((i) => all[i]).toList();
@@ -597,7 +596,7 @@ class CSVDataSource extends DataTableSource {
     final row = _dataRows[index];
     final isSelected = _selected.contains(index);
 
-    // Build one cell per CSV column
+    // One cell per CSV column
     final cells = row.map((cell) => DataCell(Text(cell?.toString() ?? ''))).toList();
 
     // Extra "Actions" cell

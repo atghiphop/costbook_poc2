@@ -1,0 +1,15 @@
+Item,Description,Proper,Vender Desc,UM,UL,Crew,Output,Material,Labor,Equipment,Total
+01-99-80-10-2030,"Square foot costs, fire supression, 60-model national average building, per building, minimum",               Minimum,"Fire Suppress., per building, minimum",SF,,,,,,,$2.07
+04-21-13-10-1240,"Brick masonry, standard size brick, running bond, common brick, 6.4 brick per SF, firewall, 12"" thick","               12"" thick","Common brick (6.4/sf), firewall, 12"" thick",SF,0.267,BRK,30,11.22,25.08,,$36.30
+02-41-13-20-2120,"Fence demolition. remove fencing, masonry, 12"" thick, 12' high",               12' high,"Removal of masonry fence, 12"" thick, 12' high",SF,0.267,LAB,30,,20.68,,$20.68
+02-51-19-00-9520,"Selective building demolition, rubbish handling, load in dumpster or truck, minimum",               Minimum,"Rubbish handling, load in dumpster or truck, min",CF,0.018,LAB,450,,1.37,,$1.37
+04-21-13-10-1560,"Brick masonry, standard size brick, running bond, common brick, 3 brick per SF, jumbo brick, 16"" firewall","               16"" firewall","Jumbo brick (3/sf), 16"" firewall",SF,0.267,BRK,30,9.9,25.08,,$34.98
+05-51-00-10-1060,"Stairs, stock unit, steel, complete, per riser, tread, 5' wide",               5' wide,"Stair, stock, steel, comp, per riser, tread, 5' wide",EA,1.333,SMW,6,431.2,132,,$563.20
+,"Food service equipment, unit kitchens, 30"" compact kitchen, cabinet for upper wall section",            Cabinet for upper wall section,"30"" compact kitchen, cabinet for upper wall section",EA,1.143,ELC,7,519.2,114.4,,$633.60
+06-05-73-10-1240,"Wood treatment, fire retardant treated lumber, maximum",               Maximum,"Fire retardant treated lumber, maximum",BF,,,,,,,$1.20
+07-13-00-10-1740,"Waterproofing, asphalt coated protective board, 1/2"" thick","               1/2"" thick","Asphalt coated protective board, 1/2"" thick",SF,0.021,LAB,380,1.66,1.63,,$3.29
+11-26-00-10-1700,"Food service equipment, bake oven, triple deck, maximum",               Maximum,"Bake oven, triple deck, maximum",EA,2.667,ELC,3,53345.6,272.8,,"$53,618.40"
+07-81-00-10-1020,"Fireproofing, 1"" thick, on beams",            On beams,"Fireproofing, sprayed on, 1"" thick, on beams",SF,0.018,LAB,450,0.92,1.37,,$2.30
+01-21-00-10-1240,"Allowances, overhead, $1,000,000 project, minimum",               Minimum,"Overhead, $1,000,000 project, minimum",PCT,,,,,,,6.00%
+23-63-00-10-1570,"Air cooled condenser, 1 circuit, low amb dmpr, 20 ton",            20 ton,"Air cooled condenser, 1 circuit, low amb dmpr, 20 ton",EA,5.333,PLM,1.5,15171.2,580.8,,"$15,752.00"
+01-21-00-10-2240,"Allowances, professional fees, architectural, $500,000 project, average",               Average,"Architectural fee, $500,000 project, average",PCT,,,,,,,8.00%
